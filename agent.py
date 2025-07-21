@@ -105,6 +105,12 @@ class Agent:
                             'relative_position': (dx, dy)
                         })
                         self.task_completion_index = 1 
+                    # fork object find
+                    if global_map[y][x] == '^':
+                        self.perceived_environment.append({
+                            'type': 'fork',
+                            'relative_position': (dx, dy)
+                        })
                 else:
                     # Treat out-of-bounds as wall
                     self.perceived_environment.append({
@@ -255,17 +261,20 @@ class Agent:
     # Function-mode Specific Behavior
     # =============================
     def _mode_based_behavior(self):
-         if self.task_completion_index == 1:  # Target found
-             self._update_rank_return()
-             self._move_return()
-         elif self.function_mode == "flex-search":
-             self._update_rank_search()
-             self._move_rank_search()
-         elif self.function_mode == "flood-search":
-             self._update_flood_search()
-             self._move_flood_search()
-         else:
-             print(f"Unknown function mode: {self.function_mode}")
+        if self.task_completion_index == 1:  # Target found
+            self._update_rank_return()
+            self._move_return()
+        elif self.function_mode == "flex-search":
+            self._update_rank_search()
+            self._move_rank_search()
+        elif self.function_mode == "flood-search":
+            self._update_flood_search()
+            self._move_flood_search()
+        elif self.function_mode == "flood-evol-search":
+            self._update_flood_search()
+            self._move_flood_search()
+        else:
+            print(f"Unknown function mode: {self.function_mode}")
 
     # ---------- Rank-based Search Behavior ---------
     def _update_rank_search(self):

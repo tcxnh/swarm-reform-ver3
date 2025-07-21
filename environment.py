@@ -120,6 +120,18 @@ class Environment:
             global_map[target_y][target_x] = '*'  # Set target point
             wall_mask[target_y][target_x] = 0  # Target is not a wall
 
+        # Add fork point if configured (independent of obstacles)
+        if hasattr(self, 'config') and self.config.get('add_fork', False):
+            fork_position = self.config.get('fork_position', 'right')
+            if fork_position == 'right':
+                fork_x, fork_y = 120, 80  # Right position (和target错开)
+            elif fork_position == 'middle':
+                fork_x, fork_y = self.width // 2, self.height // 2  # Middle position
+            else:
+                fork_x, fork_y = 75, 40   # fallback for legacy 'top'
+            global_map[fork_y][fork_x] = '^'  # Set fork point
+            wall_mask[fork_y][fork_x] = 0  # Fork is not a wall
+
         return global_map, wall_mask
 
     def initialize_agents_random(self, num_agents, config=None):
@@ -374,6 +386,8 @@ class Environment:
             for x in range(self.width):
                 if self.global_map[y][x] == '*':
                     frame[y][x] = 3  # Use 3 for target point
+                if self.global_map[y][x] == '^':
+                    frame[y][x] = 4 # Use 4 for fork point
 
         # Add agents to frame
         agent_overlay = []
@@ -418,7 +432,7 @@ class Environment:
             # Create figure and axes only if they don't exist
             self.fig, self.ax = plt.subplots(figsize=(10, 10), dpi=100)
             self.cmap = ListedColormap(['white', 'black', '#b58900', 'red'])  # white, black, yellow, red
-            self.im = self.ax.imshow(self.history[-1][0], cmap=self.cmap, vmin=0, vmax=3)
+            self.im = self.ax.imshow(self.history[-1][0], cmap=self.cmap, vmin=0, vmax=4) # Updated vmax to 4
             
             self.ax.set_xlim(0, self.width)
             self.ax.set_ylim(0, self.height)
@@ -433,6 +447,7 @@ class Environment:
             self.text_labels = []
             self.connection_lines = []
             self.target_star = None  # Add target star to visualization elements
+            self.fork_triangle = None  # Add fork triangle to visualization elements
         
         # Clear previous elements
         for patch in self.vision_circles + self.comm_circles + self.safety_circles + self.connection_lines:
@@ -440,6 +455,8 @@ class Environment:
                 patch.remove()
         if self.target_star and self.target_star in self.ax.patches:
             self.target_star.remove()
+        if hasattr(self, 'fork_triangle') and self.fork_triangle and self.fork_triangle in self.ax.patches:
+            self.fork_triangle.remove()
         for txt in self.text_labels:
             if txt in self.ax.texts:
                 txt.remove()
@@ -460,14 +477,15 @@ class Environment:
         
         # Find target position
         target_pos = None
+        fork_pos = None
         for y in range(self.height):
             for x in range(self.width):
                 if self.global_map[y][x] == '*':
                     target_pos = (x, y)
-                    break
-            if target_pos:
+                if self.global_map[y][x] == '^':
+                    fork_pos = (x, y)
+            if target_pos and fork_pos:
                 break
-        
         # Draw target as a star if found
         if target_pos:
             x, y = target_pos
@@ -486,6 +504,21 @@ class Environment:
             star = plt.Polygon(points, fill=True, color='red', alpha=0.8)
             self.ax.add_patch(star)
             self.target_star = star
+        # Draw fork as a triangle if found
+        if fork_pos:
+            x, y = fork_pos
+            # 画等边三角形
+            triangle_radius = 1.5
+            angle_offset = math.pi / 2
+            points = []
+            for i in range(3):
+                angle = angle_offset + i * 2 * math.pi / 3
+                px = x + triangle_radius * math.cos(angle)
+                py = y + triangle_radius * math.sin(angle)
+                points.append((px, py))
+            triangle = plt.Polygon(points, fill=True, color='green', alpha=0.8)
+            self.ax.add_patch(triangle)
+            self.fork_triangle = triangle
         
         # Create a dictionary to store agent positions by ID
         agent_positions = {}

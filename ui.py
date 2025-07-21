@@ -9,7 +9,7 @@ class SwarmConfigUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Swarm Configuration")
-        self.root.geometry("600x800")
+        self.root.geometry("600x900")
         
         # Initialize default values
         self.rank_config = {
@@ -52,7 +52,8 @@ class SwarmConfigUI:
         self.function_mode_var = tk.StringVar(value="flex-search")
         modes = [
             ("Flex Search", "flex-search"),
-            ("Flood Search", "flood-search")
+            ("Flood Search", "flood-search"),
+            ("Flood Evol Search", "flood-evol-search")
         ]
         
         for i, (text, value) in enumerate(modes):
@@ -145,9 +146,20 @@ class SwarmConfigUI:
         ttk.Radiobutton(target_frame, text="Top Position (75, 20)", value="top", 
                        variable=self.target_pos_var).grid(row=1, column=1, pady=2)
         
+        # Add fork point options (模仿target)
+        self.fork_var = tk.BooleanVar(value=False)
+        fork_check = ttk.Checkbutton(target_frame, text="Add Fork Point", variable=self.fork_var)
+        fork_check.grid(row=2, column=0, columnspan=2, pady=5)
+        
+        self.fork_pos_var = tk.StringVar(value="right")
+        ttk.Radiobutton(target_frame, text="Right Position (120, 80)", value="right", 
+                       variable=self.fork_pos_var).grid(row=3, column=0, pady=2)
+        ttk.Radiobutton(target_frame, text="Middle Position (width//2, height//2)", value="middle", 
+                       variable=self.fork_pos_var).grid(row=3, column=1, pady=2)
+        
         # Initialize and Play/Pause buttons
         btn_frame = ttk.Frame(self.main_frame)
-        btn_frame.grid(row=len(self.rank_config)+16, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=len(self.rank_config)+16, column=0, columnspan=2, pady=10)
         
         self.init_btn = ttk.Button(btn_frame, text="Initialize", command=self.initialize_simulation)
         self.init_btn.pack(side=tk.LEFT, padx=5)
@@ -237,9 +249,21 @@ class SwarmConfigUI:
         ttk.Radiobutton(target_frame, text="Top Position (75, 20)", value="top", 
                        variable=self.target_pos_var).grid(row=1, column=1, pady=2)
         
+        # Update fork point options frame
+        fork_frame = ttk.LabelFrame(self.main_frame, text="Fork Point Options")
+        fork_frame.grid(row=base_row+11, column=0, columnspan=2, pady=5, sticky='ew')
+
+        fork_check = ttk.Checkbutton(fork_frame, text="Add Fork Point", variable=self.fork_var)
+        fork_check.grid(row=0, column=0, columnspan=2, pady=5)
+
+        ttk.Radiobutton(fork_frame, text="Right Position (120, 80)", value="right", 
+                       variable=self.fork_pos_var).grid(row=1, column=0, pady=2)
+        ttk.Radiobutton(fork_frame, text="Middle Position (width//2, height//2)", value="middle", 
+                       variable=self.fork_pos_var).grid(row=1, column=1, pady=2)
+        
         # Update button frame
         btn_frame = ttk.Frame(self.main_frame)
-        btn_frame.grid(row=base_row+11, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=base_row+12, column=0, columnspan=2, pady=20)
         
         self.init_btn = ttk.Button(btn_frame, text="Initialize", command=self.initialize_simulation)
         self.init_btn.pack(side=tk.LEFT, padx=5)
@@ -260,6 +284,8 @@ class SwarmConfigUI:
                 'add_obstacles': self.obstacle_var.get(),
                 'add_target': self.target_var.get(),
                 'target_position': self.target_pos_var.get(),  # Add target position
+                'add_fork': self.fork_var.get(),
+                'fork_position': self.fork_pos_var.get(),
                 'rank_config': {}
             }
             
