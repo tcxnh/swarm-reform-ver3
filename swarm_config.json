@@ -1,0 +1,16 @@
+{
+    "num_agents": 12,
+    "width": 200,
+    "height": 200,
+    "init_method": "grid",
+    "function_mode": "flex-search",
+    "add_obstacles": false,
+    "add_target": false,
+    "target_position": "right",
+    "rank_config": {
+        "0": 4,
+        "1": 1,
+        "2": 1,
+        "3": 1
+    }
+}
