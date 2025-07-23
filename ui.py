@@ -20,9 +20,9 @@ class SwarmConfigUI:
         }
         
         self.init_method = "random"  # Default initialization method
-        self.num_agents = 12
-        self.width = 200  # 修改默认宽度
-        self.height = 200  # 修改默认高度
+        self.num_agents = 20
+        self.width = 150  # 修改默认宽度
+        self.height = 150  # 修改默认高度
         
         # Store both labels and entries
         self.rank_labels = {}
@@ -49,7 +49,7 @@ class SwarmConfigUI:
         # Function Mode Selection Section
         ttk.Label(self.main_frame, text="Function Mode", font=('Arial', 12, 'bold')).grid(row=0, column=0, columnspan=2, pady=10)
         
-        self.function_mode_var = tk.StringVar(value="flex-search")
+        self.function_mode_var = tk.StringVar(value="flood-evol-search")
         modes = [
             ("Flex Search", "flex-search"),
             ("Flood Search", "flood-search"),
@@ -147,11 +147,11 @@ class SwarmConfigUI:
                        variable=self.target_pos_var).grid(row=1, column=1, pady=2)
         
         # Add fork point options (模仿target)
-        self.fork_var = tk.BooleanVar(value=False)
+        self.fork_var = tk.BooleanVar(value=True)
         fork_check = ttk.Checkbutton(target_frame, text="Add Fork Point", variable=self.fork_var)
         fork_check.grid(row=2, column=0, columnspan=2, pady=5)
         
-        self.fork_pos_var = tk.StringVar(value="right")
+        self.fork_pos_var = tk.StringVar(value="middle")
         ttk.Radiobutton(target_frame, text="Right Position (120, 80)", value="right", 
                        variable=self.fork_pos_var).grid(row=3, column=0, pady=2)
         ttk.Radiobutton(target_frame, text="Middle Position (width//2, height//2)", value="middle", 

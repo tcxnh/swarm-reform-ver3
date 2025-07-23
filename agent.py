@@ -33,10 +33,15 @@ class Agent:
         self.perceived_environment = [] # information from environment
         self.received_messages = [] # information from nearby agents
         self.task_completion_index = 0  # initial as not completed
+        # --- Fork leader & split fields ---
+        self.is_fork_leader = False
+        self.assigned_direction = None  # For subordinate: 'left'/'right' or None
+        self.assigned_subordinate = {}  # For fork leader: {sub_id: direction}
+        self.fork_leader_id = -1  # For broadcast
 
     def _get_max_subordinates(self):
         """
-        Get the maximum number of subordinates based on rank.
+        Get the maximum number of subordinates based on rank or custom override.
         """
         try:
             # Get rank_config from environment if available
@@ -172,16 +177,28 @@ class Agent:
             'function_mode': self.function_mode,
             'position': self.position.copy(),  # just used for simulation
             'direct_sub_id': self.direct_sub_id.copy(),
-            'direct_sup_id': self.direct_sup_id
+            'direct_sup_id': self.direct_sup_id,
+            # --- fork分流相关 ---
+            'fork_leader_id': self.id if self.is_fork_leader else -1,
+            'assigned_direction': None,
+            'split_tag': None  # 广播分流标签
         }
-
+        # 如果是fork leader，给被分配的subordinate单独发assigned_direction
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
                 x, y = x0 + dx, y0 + dy
                 if 0 <= x < len(comm_map[0]) and 0 <= y < len(comm_map):
-                    # Only broadcast if there is a clear line of sight
                     if self._check_line_of_sight(x, y, global_map):
-                        comm_map[y][x].append(message)
+                        # 检查是否是被分配的subordinate
+                        assigned_dir = None
+                        if self.is_fork_leader:
+                            for sub_id, direction in self.assigned_subordinate.items():
+                                if (int(self.position.x + dx), int(self.position.y + dy)) == (int(self.environment.agents[sub_id].position.x), int(self.environment.agents[sub_id].position.y)):
+                                    assigned_dir = direction
+                                    break
+                        msg = message.copy()
+                        msg['assigned_direction'] = assigned_dir
+                        comm_map[y][x].append(msg)
 
     def _remove_old_broadcast(self, comm_map): # remove the broadcast before the agent move 
         radius = int(self.comm_range)
@@ -205,9 +222,14 @@ class Agent:
         self.subordinates = []         # Messages from agents with larger rank 
         self.superiors = []            # Messages from agents with lower rank
         self.peers = []                # Messages from agents with same rank
+        self.assigned_direction = None  # 每步重置，防止旧信号残留
 
         for msg in comm_map[y][x]:
             if msg['id'] == self.id:
+                continue
+
+            # 分流过滤：只接收同一路的消息
+            if msg.get('split_tag') is not None: # 移除 split_tag 过滤
                 continue
 
             # Check if there is a clear line of sight to the sender
@@ -222,6 +244,12 @@ class Agent:
             # If any agent has found the target, set our task_completion to 1
             if msg.get('task_completion', 0) == 1:
                 self.task_completion_index = 1
+
+            # fork leader分流信号
+            if msg.get('fork_leader_id', -1) >= 0 and msg.get('assigned_direction') is not None:
+                if msg['assigned_direction'] in ['left', 'right'] and self.id in msg.get('direct_sub_id', []):
+                    self.assigned_direction = msg['assigned_direction']
+                    print(f"Agent {self.id} inherits split_tag {self.assigned_direction} from fork leader {msg['fork_leader_id']}")
 
             # categorize
             if msg['rank'] < self.rank and msg['rank'] >= 0:
@@ -271,10 +299,54 @@ class Agent:
             self._update_flood_search()
             self._move_flood_search()
         elif self.function_mode == "flood-evol-search":
-            self._update_flood_search()
-            self._move_flood_search()
+            self._update_flood_evol_search()
+            self._move_flood_evol_search()
         else:
             print(f"Unknown function mode: {self.function_mode}")
+
+    def _update_flood_evol_search(self):
+        """
+        类似flood-search，但如果视野内发现fork，则像target一样传播，并进入return。
+        分叉leader主动分配subordinate和方向。
+        """
+        # 先同步消息
+        for msg in self.received_messages:
+            if msg.get('task_completion', 0) in (1, 2):
+                self.task_completion_index = msg['task_completion']
+
+        # 检查自己视野内是否有fork
+        for info in self.perceived_environment:
+            if info['type'] == 'fork':
+                self.task_completion_index = 2  # 2表示fork发现
+                break
+
+        # 只要发现fork（自己或收到广播），就停止移动
+        if self.task_completion_index == 2:
+            return
+
+        # 其余情况正常 flood-search
+        if self.task_completion_index == 0:
+            self._update_flood_search()
+
+    def _move_flood_evol_search(self):
+        """
+        如果发现fork或target，分叉subordinate优先朝assigned_direction移动，否则像flex-search一样继续探索。
+        """
+        if self.task_completion_index == 2:
+            return
+        self._move_flood_search()
+
+    def _move_towards_assigned_direction(self):
+        """
+        按assigned_direction优先移动（简单实现：左/右）。
+        """
+        if self.assigned_direction == 'left':
+            move_x, move_y = -1, 0
+        elif self.assigned_direction == 'right':
+            move_x, move_y = 1, 0
+        else:
+            move_x, move_y = 0, 0
+        self._attempt_move(move_x, move_y)
 
     # ---------- Rank-based Search Behavior ---------
     def _update_rank_search(self):
@@ -889,6 +961,8 @@ class Agent:
         Simulation interface to update one agent step.
         Performs general update + function-mode behavior.
         """
+        # 打印调试信息
+        print(f"Agent {self.id}: max_subordinate={self._get_max_subordinates()}")
         self._general_behavior(global_map, comm_map)
         self._mode_based_behavior()
         self._broadcast_to_comm_map(comm_map, global_map) # simulation only

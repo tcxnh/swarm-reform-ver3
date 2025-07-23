@@ -405,7 +405,8 @@ class Environment:
             agent_overlay.append((
                 agent.position.x, agent.position.y,
                 agent.vision_range, agent.comm_range, agent.safety_range, 
-                agent.rank, agent.id, agent.direct_sup_id, agent.step_number
+                agent.rank, agent.id, agent.direct_sup_id, agent.step_number,
+                getattr(agent, 'split_tag', None)  # 新增分流标签
             ))
 
         self.history.append((frame, agent_overlay))
@@ -522,22 +523,30 @@ class Environment:
         
         # Create a dictionary to store agent positions by ID
         agent_positions = {}
-        for x, y, vr, cr, sr, rank, agent_id, sup_id, step_num in overlays:
+        for x, y, vr, cr, sr, rank, agent_id, sup_id, step_num, split_tag in overlays:
             agent_positions[agent_id] = (x, y)
         
         # Draw all elements
-        for x, y, vr, cr, sr, rank, agent_id, sup_id, step_num in overlays:
+        for x, y, vr, cr, sr, rank, agent_id, sup_id, step_num, split_tag in overlays:
             # Get agent's task completion status from comm_map
             task_completed = False
             for msg in self.comm_map[int(y)][int(x)]:
                 if msg['type'] == 'status' and msg['id'] == agent_id:
-                    task_completed = msg.get('task_completion', 0) == 1
+                    task_completed = msg.get('task_completion', 0)
                     break
 
-            # Draw circles with color based on task completion
-            vis = Circle((x, y), vr, fill=True, 
-                        color='red' if task_completed else 'blue', 
-                        alpha=0.05)  # Reduced alpha from 0.1 to 0.05
+            # Draw circles with color based on split_tag (分流可视化)
+            if split_tag == 'left':
+                vis_color = 'orange'
+            elif split_tag == 'right':
+                vis_color = 'purple'
+            elif task_completed == 1:
+                vis_color = 'red'      # target
+            elif task_completed == 2:
+                vis_color = 'green'    # fork
+            else:
+                vis_color = 'blue'
+            vis = Circle((x, y), vr, fill=True, color=vis_color, alpha=0.05)
             comm = Circle((x, y), cr, fill=False, linestyle='--', color='gray', alpha=0.2)
             safe = Circle((x, y), sr, fill=False, linestyle='-', color='green', alpha=0.3)
             
