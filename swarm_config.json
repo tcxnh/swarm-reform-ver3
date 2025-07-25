@@ -4,11 +4,12 @@
     "height": 150,
     "init_method": "grid",
     "function_mode": "flood-evol-search",
-    "add_obstacles": false,
+    "add_obstacles": true,
     "add_target": false,
     "target_position": "right",
     "add_fork": true,
     "fork_position": "middle",
+    "add_fork_deadend": true,
     "rank_config": {
         "0": 1,
         "1": 1,

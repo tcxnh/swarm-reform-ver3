@@ -33,6 +33,13 @@ class Agent:
         self.perceived_environment = [] # information from environment
         self.received_messages = [] # information from nearby agents
         self.task_completion_index = 0  # initial as not completed
+        # Dead end tracking for smart flood search
+        self.deadend_detected = False  # Flag to track if agent detected a dead end
+        self.known_deadend_areas = set()  # Set of (x, y) coordinates known to be dead end areas
+        # Direction tracking for fork-based navigation
+        self.fork_direction = None  # Which direction this agent is relative to fork ('left', 'right', 'center')
+        self.deadend_direction = None  # Which direction leads to dead end
+        self.blocked_directions = set()  # Set of directions known to be blocked/dead ends
         # --- Fork leader & split fields ---
         self.is_fork_leader = False
         self.assigned_direction = None  # For subordinate: 'left'/'right' or None
@@ -116,6 +123,12 @@ class Agent:
                             'type': 'fork',
                             'relative_position': (dx, dy)
                         })
+                    # dead end object find
+                    if global_map[y][x] == 'X':
+                        self.perceived_environment.append({
+                            'type': 'deadend',
+                            'relative_position': (dx, dy)
+                        })
                 else:
                     # Treat out-of-bounds as wall
                     self.perceived_environment.append({
@@ -181,7 +194,14 @@ class Agent:
             # --- fork分流相关 ---
             'fork_leader_id': self.id if self.is_fork_leader else -1,
             'assigned_direction': None,
-            'split_tag': None  # 广播分流标签
+            'split_tag': None,  # 广播分流标签
+            # --- dead end tracking ---
+            'deadend_detected': self.deadend_detected,
+            'known_deadend_areas': list(self.known_deadend_areas),  # Convert set to list for message
+            # --- direction tracking for fork-based navigation ---
+            'fork_direction': self.fork_direction,
+            'deadend_direction': self.deadend_direction,
+            'blocked_directions': list(self.blocked_directions),
         }
         # 如果是fork leader，给被分配的subordinate单独发assigned_direction
         for dx in range(-radius, radius + 1):
@@ -245,6 +265,26 @@ class Agent:
             if msg.get('task_completion', 0) == 1:
                 self.task_completion_index = 1
 
+            # Process dead end information from other agents
+            if msg.get('deadend_detected', False):
+                self.deadend_detected = True
+            # Update known dead end areas
+            if 'known_deadend_areas' in msg:
+                for deadend_pos in msg['known_deadend_areas']:
+                    if isinstance(deadend_pos, (list, tuple)) and len(deadend_pos) == 2:
+                        self.known_deadend_areas.add(tuple(deadend_pos))
+
+            # Process direction information for fork-based navigation
+            if msg.get('deadend_direction') and msg['deadend_direction'] != 'unknown':
+                self.blocked_directions.add(msg['deadend_direction'])
+                print(f"Agent {self.id} learned that {msg['deadend_direction']} direction is blocked from agent {msg['id']}")
+            
+            # Update blocked directions
+            if 'blocked_directions' in msg:
+                for blocked_dir in msg['blocked_directions']:
+                    if blocked_dir and blocked_dir != 'unknown':
+                        self.blocked_directions.add(blocked_dir)
+
             # fork leader分流信号
             if msg.get('fork_leader_id', -1) >= 0 and msg.get('assigned_direction') is not None:
                 if msg['assigned_direction'] in ['left', 'right'] and self.id in msg.get('direct_sub_id', []):
@@ -304,37 +344,294 @@ class Agent:
         else:
             print(f"Unknown function mode: {self.function_mode}")
 
+    def _determine_direction_from_fork(self, fork_relative_pos):
+        """
+        Determine which direction this agent is relative to the fork.
+        Returns 'left', 'right', or 'center' based on relative position.
+        """
+        dx, dy = fork_relative_pos
+        
+        # If fork is very close, consider as center
+        if abs(dx) <= 2 and abs(dy) <= 2:
+            return 'center'
+        
+        # Determine direction based on relative position
+        # Positive dx means fork is to the right of agent, so agent is on left side
+        # Negative dx means fork is to the left of agent, so agent is on right side
+        if dx > 2:  # Fork is to the right, agent is on left branch
+            return 'left'
+        elif dx < -2:  # Fork is to the left, agent is on right branch  
+            return 'right'
+        else:
+            # Close to center line, use y-coordinate to determine
+            if dy > 0:  # Fork is below, agent is approaching from above
+                return 'center'
+            else:
+                return 'center'
+
     def _update_flood_evol_search(self):
         """
-        类似flood-search，但如果视野内发现fork，则像target一样传播，并进入return。
-        分叉leader主动分配subordinate和方向。
+        Enhanced flood search that can detect dead ends and avoid them.
+        - Similar to flood-search, but with smart dead end avoidance
+        - If fork is found in vision, propagate like target and enter return
+        - If dead end is found, mark area as blocked and signal back to other agents
+        - Avoid moving towards known dead end areas
         """
-        # 先同步消息
+        # First sync messages for target and dead end completion only
         for msg in self.received_messages:
-            if msg.get('task_completion', 0) in (1, 2):
+            if msg.get('task_completion', 0) in (1, 3):  # Only target found (1) and dead end (3)
                 self.task_completion_index = msg['task_completion']
 
-        # 检查自己视野内是否有fork
+        # Check own vision for fork discovery
+        fork_found = False
         for info in self.perceived_environment:
             if info['type'] == 'fork':
-                self.task_completion_index = 2  # 2表示fork发现
+                fork_found = True
+                
+                # Determine and store our direction relative to fork
+                self.fork_direction = self._determine_direction_from_fork(info['relative_position'])
+                print(f"Agent {self.id} discovered fork, positioned on {self.fork_direction} side")
+                # No need to pause or set task_completion_index = 2
                 break
 
-        # 只要发现fork（自己或收到广播），就停止移动
-        if self.task_completion_index == 2:
+        # Check own vision for dead end discovery
+        deadend_found = False
+        for info in self.perceived_environment:
+            if info['type'] == 'deadend':
+                deadend_found = True
+                # Mark the dead end location in our known areas
+                abs_x = int(self.position.x + info['relative_position'][0])
+                abs_y = int(self.position.y + info['relative_position'][1])
+                self.known_deadend_areas.add((abs_x, abs_y))
+                
+                # Also mark the surrounding area as potentially blocked
+                for dx in range(-3, 4):  # Mark a larger area around dead end
+                    for dy in range(-3, 4):
+                        area_x, area_y = abs_x + dx, abs_y + dy
+                        self.known_deadend_areas.add((area_x, area_y))
+                
+                # CRITICAL: Report which direction leads to dead end
+                if hasattr(self, 'fork_direction'):
+                    self.deadend_direction = self.fork_direction
+                    print(f"Agent {self.id} detected dead end in {self.fork_direction} branch!")
+                else:
+                    # Try to infer direction from known fork agents
+                    self.deadend_direction = self._infer_deadend_direction()
+                break
+
+        # If dead end found, set task completion to signal back to other agents
+        if deadend_found:
+            self.deadend_detected = True
+            self.talisk_completion_index = 3  # 3 = dead end discovered (blocks movement)
             return
 
-        # 其余情况正常 flood-search
+        # If in a dead end area (detected by self or others), try to move out
+        current_pos = (int(self.position.x), int(self.position.y))
+        if current_pos in self.known_deadend_areas:
+            # Move away from dead end areas - this will be handled in movement
+            pass
+
+        # Otherwise continue normal flood search behavior
         if self.task_completion_index == 0:
             self._update_flood_search()
 
+    def _infer_deadend_direction(self):
+        """
+        Try to infer which direction the dead end is in based on communication with other agents.
+        """
+        # Look for agents that have discovered fork and determine our relative position
+        for msg in self.received_messages:
+            if msg.get('task_completion', 0) == 2:  # Fork discovered
+                # Calculate relative position to this fork-discovering agent
+                dx = self.position.x - msg['position'].x
+                dy = self.position.y - msg['position'].y
+                
+                if abs(dx) > 5:  # Significant horizontal separation
+                    return 'left' if dx < 0 else 'right'
+        
+        return 'unknown'
+
     def _move_flood_evol_search(self):
         """
-        如果发现fork或target，分叉subordinate优先朝assigned_direction移动，否则像flex-search一样继续探索。
+        Enhanced flood search movement that avoids dead end areas.
+        - If dead end discovered, stop moving to signal back
+        - If in dead end area, try to escape towards entrance/lower rank agents
+        - Otherwise avoid moving towards known dead end areas
+        - Use normal flood search with dead end avoidance
         """
-        if self.task_completion_index == 2:
+        # If dead end discovered, stop moving to allow signaling
+        if self.task_completion_index == 3:
             return
-        self._move_flood_search()
+
+        # Check if currently in a dead end area
+        current_pos = (int(self.position.x), int(self.position.y))
+        if current_pos in self.known_deadend_areas:
+            # Try to escape from dead end area towards lower rank agents
+            self._move_escape_deadend()
+            return
+
+        # Normal flood search but with dead end avoidance
+        self._move_flood_search_with_deadend_avoidance()
+
+    def _move_escape_deadend(self):
+        """
+        Escape movement when agent is in a dead end area.
+        Move towards the lowest rank agent that is NOT in a dead end area.
+        """
+        if self.is_entrance:
+            return
+
+        # Find agents not in dead end areas, prioritize lower rank
+        escape_targets = []
+        for msg in self.received_messages:
+            if msg['type'] != 'status':
+                continue
+            
+            msg_pos = (int(msg['position'].x), int(msg['position'].y))
+            # Only consider agents not in dead end areas
+            if msg_pos not in self.known_deadend_areas:
+                dist = self._calculate_distance(msg)
+                if dist <= self.vision_range:
+                    escape_targets.append((msg, dist))
+
+        if not escape_targets:
+            # No escape targets visible, try random movement away from dead end center
+            self._move_random_escape()
+            return
+
+        # Move towards the lowest rank agent not in dead end area
+        escape_targets.sort(key=lambda x: (x[0]['rank'], x[1]))  # Sort by rank first, then distance
+        target_msg = escape_targets[0][0]
+        
+        # Calculate movement towards escape target
+        dx = target_msg['position'].x - self.position.x
+        dy = target_msg['position'].y - self.position.y
+        dist = math.sqrt(dx**2 + dy**2)
+        
+        if dist > 0:
+            move_x = round((dx / dist) * self.speed)
+            move_y = round((dy / dist) * self.speed)
+            self._attempt_move(move_x, move_y)
+
+    def _move_random_escape(self):
+        """
+        Random movement to escape when no clear escape path is visible.
+        """
+        import random
+        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        random.shuffle(directions)
+        
+        for dx, dy in directions:
+            new_pos = (int(self.position.x + dx), int(self.position.y + dy))
+            if new_pos not in self.known_deadend_areas:
+                self._attempt_move(dx, dy)
+                break
+
+    def _move_flood_search_with_deadend_avoidance(self):
+        """
+        Normal flood search movement but avoid known dead end areas and blocked directions.
+        """
+        if self.is_entrance:
+            return
+
+        # Get agents in vision range, excluding those in dead end areas
+        visible_agents = []
+        for msg in self.received_messages:
+            if msg['type'] != 'status':
+                continue
+
+            dist = self._calculate_distance(msg)
+            if dist <= self.vision_range:
+                msg_pos = (int(msg['position'].x), int(msg['position'].y))
+                # Include agents not in dead end areas, or agents with significantly lower rank
+                if msg_pos not in self.known_deadend_areas or msg['rank'] < self.rank - 2:
+                    visible_agents.append(msg)
+
+        # Stop if no suitable agents in vision range
+        if not visible_agents:
+            return
+
+        # Find the lowest rank agent in vision range to repel from
+        lowest_rank_agent = min(visible_agents, key=lambda x: x['rank'])
+        
+        # Calculate repulsion vector but avoid dead end areas and blocked directions
+        dx = self.position.x - lowest_rank_agent['position'].x
+        dy = self.position.y - lowest_rank_agent['position'].y
+        dist = math.sqrt(dx**2 + dy**2)
+        
+        if dist > 0:
+            # Normalize movement direction
+            move_x = round((dx / dist) * self.speed)
+            move_y = round((dy / dist) * self.speed)
+            
+            # Check if movement would lead to dead end area
+            new_pos = (int(self.position.x + move_x), int(self.position.y + move_y))
+            if new_pos in self.known_deadend_areas:
+                # Try alternative directions that avoid dead end areas
+                alternative_moves = [
+                    (move_x, 0), (0, move_y), (-move_x, 0), (0, -move_y),
+                    (move_x, move_y//2), (move_x//2, move_y)
+                ]
+                for alt_x, alt_y in alternative_moves:
+                    alt_pos = (int(self.position.x + alt_x), int(self.position.y + alt_y))
+                    if alt_pos not in self.known_deadend_areas:
+                        # Additional check: avoid blocked directions if near fork
+                        if not self._would_enter_blocked_direction(alt_x, alt_y):
+                            self._attempt_move(alt_x, alt_y)
+                            return
+                # If all alternatives lead to dead end, don't move
+                return
+            else:
+                # Check if this movement would enter a blocked direction
+                if self._would_enter_blocked_direction(move_x, move_y):
+                    # Try alternative directions that avoid blocked directions
+                    alternative_moves = [
+                        (0, move_y), (move_x, 0), (-move_x, 0), (0, -move_y),
+                        (move_x//2, move_y), (move_x, move_y//2)
+                    ]
+                    for alt_x, alt_y in alternative_moves:
+                        if not self._would_enter_blocked_direction(alt_x, alt_y):
+                            alt_pos = (int(self.position.x + alt_x), int(self.position.y + alt_y))
+                            if alt_pos not in self.known_deadend_areas:
+                                self._attempt_move(alt_x, alt_y)
+                                return
+                    # If no good alternative, stay put
+                    print(f"Agent {self.id} avoiding blocked direction, staying put")
+                    return
+                else:
+                    self._attempt_move(move_x, move_y)
+
+    def _would_enter_blocked_direction(self, move_x, move_y):
+        """
+        Check if a movement would lead the agent into a direction known to be blocked.
+        This is particularly important when near a fork.
+        """
+        if not self.blocked_directions:
+            return False
+        
+        # Check if we have any fork-related knowledge (either our own or from others)
+        has_fork_knowledge = (
+            self.fork_direction is not None or  # We discovered a fork
+            any(msg.get('fork_direction') for msg in self.received_messages) or  # Others shared fork info
+            len(self.blocked_directions) > 0  # We learned about blocked directions
+        )
+        
+        if not has_fork_knowledge:
+            return False  # Only apply direction blocking when we have fork knowledge
+        
+        # Determine the direction we would be moving towards
+        move_direction = None
+        if move_x > 0:
+            move_direction = 'right'
+        elif move_x < 0:
+            move_direction = 'left'
+        # For vertical movements or small movements, don't apply direction blocking
+        
+        if move_direction and move_direction in self.blocked_directions:
+            print(f"Agent {self.id} avoiding movement towards blocked {move_direction} direction")
+            return True
+        
+        return False
 
     def _move_towards_assigned_direction(self):
         """
@@ -961,8 +1258,6 @@ class Agent:
         Simulation interface to update one agent step.
         Performs general update + function-mode behavior.
         """
-        # 打印调试信息
-        print(f"Agent {self.id}: max_subordinate={self._get_max_subordinates()}")
         self._general_behavior(global_map, comm_map)
         self._mode_based_behavior()
         self._broadcast_to_comm_map(comm_map, global_map) # simulation only

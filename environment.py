@@ -57,58 +57,45 @@ class Environment:
 
         # Add obstacles if configured
         if hasattr(self, 'config') and self.config.get('add_obstacles', False):
-            def add_barrier(x1, y1, x2, y2):
-                for y in range(y1, y2):
-                    for x in range(x1, x2):
-                        if 0 <= x < self.width and 0 <= y < self.height:
-                            global_map[y][x] = '#'
-                            wall_mask[y][x] = 1
-
-            # Define maze patterns
-            maze_patterns = [
-                lambda: [
-                    # ===== 外边框（厚度5）=====
-                    (0, 0, 150, 5),  # 上墙
-                    (0, 0, 5, 150),  # 左墙
-                    (145, 0, 150, 150),  # 右墙
-
-                    # ===== Z字形主干道（厚度5）=====
-                    # # 第一横（从左到右）
-                    # (5, 40, 50, 45),
-                    # # 第一斜（向下）
-                    # (45, 45, 50, 90),
-                    # 第二横（从右到左）
-                    (120, 90, 145, 100),
-                    # 第三横（从左到右）
-                    (95, 0, 145, 45),
-
-                    # ===== 大块洞穴障碍物 =====
-                    # 左上区域（不规则大块）
-                    (0, 0, 40, 35),
-                    (20, 35, 45, 70),
-                    # 中间区域（阻挡Z字路径）
-                    (60, 70, 80, 120),
-                    # 右下区域（缩小后的岩石群）
-                    # (110, 110, 130, 130),  # 主岩石缩小
-                    # (120, 90, 140, 110),   # 新增小岩石
-                    # (80, 10, 120, 40),
-                    # 左下入口区域（洞穴结构）
-                    (5, 120, 30, 150),
-                    # 右上出口区域（狭窄通道）
-                    (120, 140, 140, 150),
-
-                    # ===== 入口和出口（厚度5）=====
-                    # 入口（左下，从洞穴进入）
-                    (0, 125, 5, 130),
-                    # 出口（右上，狭窄通道）
-                    (120,140,140,150)
-                ]
-            ]
-
-            # Randomly select and apply one maze pattern
-            selected_maze = random.choice(maze_patterns)
-            for x1, y1, x2, y2 in selected_maze():
-                add_barrier(x1, y1, x2, y2)
+            # 先整体填满障碍（墙），再挖出Y型通路
+            for y in range(self.height):
+                for x in range(self.width):
+                    if 0 < x < self.width-1 and 0 < y < self.height-1:
+                        global_map[y][x] = '#'
+                        wall_mask[y][x] = 1
+            # Y型通路参数
+            cx = self.width // 2
+            cy = self.height // 2
+            # 极大加宽
+            main_width = 27
+            branch_width = 22
+            # 下干（竖线）——从cy一直挖到入口agent的y坐标
+            entrance_y = self.height - 2
+            for y in range(cy, entrance_y+1):
+                for dx in range(-main_width//2, main_width//2+1):
+                    global_map[y][cx+dx] = ' '
+                    wall_mask[y][cx+dx] = 0
+            # 左分支（左上斜线，短，夹角更大）
+            for i in range(0, 25):
+                x = cx - 12 - int(i*1.2)  # 斜率更大
+                y = cy - i
+                for dx in range(-branch_width//2, branch_width//2+1):
+                    if 0 < x+dx < self.width-1 and 0 < y < self.height-1:
+                        global_map[y][x+dx] = ' '
+                        wall_mask[y][x+dx] = 0
+            # 右分支（右上斜线，更长更宽，夹角更大）
+            for i in range(0, 90):
+                x = cx + 12 + int(i*1.8)  # 斜率更大，右分支更长
+                y = cy - i
+                for dx in range(-branch_width, branch_width+1):
+                    if 0 < x+dx < self.width-1 and 0 < y < self.height-1:
+                        global_map[y][x+dx] = ' '
+                        wall_mask[y][x+dx] = 0
+            # 保证入口agent初始位置没有障碍物
+            entrance_x = self.width // 2
+            for dx in range(-main_width//2, main_width//2+1):
+                global_map[entrance_y][entrance_x+dx] = ' '
+                wall_mask[entrance_y][entrance_x+dx] = 0
 
         # Add target point if configured (independent of obstacles)
         if hasattr(self, 'config') and self.config.get('add_target', False):
@@ -131,6 +118,21 @@ class Environment:
                 fork_x, fork_y = 75, 40   # fallback for legacy 'top'
             global_map[fork_y][fork_x] = '^'  # Set fork point
             wall_mask[fork_y][fork_x] = 0  # Fork is not a wall
+
+        # Add fork and dead end markers if configured
+        if hasattr(self, 'config') and self.config.get('add_fork_deadend', False):
+            # 左上分支死路
+            cx = self.width // 2
+            cy = self.height // 2
+            deadend1_x, deadend1_y = cx - 40, cy - 22
+            if 0 < deadend1_x < self.width-1 and 0 < deadend1_y < self.height-1:
+                global_map[deadend1_y][deadend1_x] = 'X'
+                wall_mask[deadend1_y][deadend1_x] = 0
+            # 右上分支死路
+            deadend2_x, deadend2_y = cx + 90, cy - 70
+            if 0 < deadend2_x < self.width-1 and 0 < deadend2_y < self.height-1:
+                global_map[deadend2_y][deadend2_x] = 'X'
+                wall_mask[deadend2_y][deadend2_x] = 0
 
         return global_map, wall_mask
 
@@ -388,6 +390,8 @@ class Environment:
                     frame[y][x] = 3  # Use 3 for target point
                 if self.global_map[y][x] == '^':
                     frame[y][x] = 4 # Use 4 for fork point
+                if self.global_map[y][x] == 'X':
+                    frame[y][x] = 5 # Use 5 for dead end (deep blue)
 
         # Add agents to frame
         agent_overlay = []
@@ -432,8 +436,8 @@ class Environment:
         if not hasattr(self, 'fig') or not hasattr(self, 'ax'):
             # Create figure and axes only if they don't exist
             self.fig, self.ax = plt.subplots(figsize=(10, 10), dpi=100)
-            self.cmap = ListedColormap(['white', 'black', '#b58900', 'red'])  # white, black, yellow, red
-            self.im = self.ax.imshow(self.history[-1][0], cmap=self.cmap, vmin=0, vmax=4) # Updated vmax to 4
+            self.cmap = ListedColormap(['white', 'black', '#b58900', 'red', 'green', '#1f3b99'])  # white, black, yellow, red, green, deep blue
+            self.im = self.ax.imshow(self.history[-1][0], cmap=self.cmap, vmin=0, vmax=5) # Updated vmax to 5
             
             self.ax.set_xlim(0, self.width)
             self.ax.set_ylim(0, self.height)
@@ -521,6 +525,22 @@ class Environment:
             self.ax.add_patch(triangle)
             self.fork_triangle = triangle
         
+        # Draw dead end markers as black triangles
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.global_map[y][x] == 'X':
+                    # Create black triangle for dead end
+                    triangle_radius = 1.5
+                    angle_offset = math.pi / 2
+                    points = []
+                    for i in range(3):
+                        angle = angle_offset + i * 2 * math.pi / 3
+                        px = x + triangle_radius * math.cos(angle)
+                        py = y + triangle_radius * math.sin(angle)
+                        points.append((px, py))
+                    deadend_triangle = plt.Polygon(points, fill=True, color='black', alpha=0.8)
+                    self.ax.add_patch(deadend_triangle)
+        
         # Create a dictionary to store agent positions by ID
         agent_positions = {}
         for x, y, vr, cr, sr, rank, agent_id, sup_id, step_num, split_tag in overlays:
@@ -544,6 +564,8 @@ class Environment:
                 vis_color = 'red'      # target
             elif task_completed == 2:
                 vis_color = 'green'    # fork
+            elif task_completed == 3:
+                vis_color = 'brown'    # dead end detected
             else:
                 vis_color = 'blue'
             vis = Circle((x, y), vr, fill=True, color=vis_color, alpha=0.05)

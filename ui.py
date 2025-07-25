@@ -128,7 +128,7 @@ class SwarmConfigUI:
         self.height_entry.grid(row=len(self.rank_config)+13, column=1, padx=5, pady=5)
         
         # Add obstacle option
-        self.obstacle_var = tk.BooleanVar(value=False)
+        self.obstacle_var = tk.BooleanVar(value=True)
         obstacle_check = ttk.Checkbutton(self.main_frame, text="Add Obstacles", variable=self.obstacle_var)
         obstacle_check.grid(row=len(self.rank_config)+14, column=0, columnspan=2, pady=5)
         
@@ -146,16 +146,14 @@ class SwarmConfigUI:
         ttk.Radiobutton(target_frame, text="Top Position (75, 20)", value="top", 
                        variable=self.target_pos_var).grid(row=1, column=1, pady=2)
         
-        # Add fork point options (模仿target)
-        self.fork_var = tk.BooleanVar(value=True)
-        fork_check = ttk.Checkbutton(target_frame, text="Add Fork Point", variable=self.fork_var)
-        fork_check.grid(row=2, column=0, columnspan=2, pady=5)
+        # Hidden fork point config for backend logic
+        self.fork_var = tk.BooleanVar(value=True)  # Always enabled for backend
+        self.fork_pos_var = tk.StringVar(value="middle")  # Default position for backend
         
-        self.fork_pos_var = tk.StringVar(value="middle")
-        ttk.Radiobutton(target_frame, text="Right Position (120, 80)", value="right", 
-                       variable=self.fork_pos_var).grid(row=3, column=0, pady=2)
-        ttk.Radiobutton(target_frame, text="Middle Position (width//2, height//2)", value="middle", 
-                       variable=self.fork_pos_var).grid(row=3, column=1, pady=2)
+        # Add fork and dead end marker option
+        self.fork_deadend_var = tk.BooleanVar(value=True)
+        fork_deadend_check = ttk.Checkbutton(target_frame, text="Add Fork and Dead End Markers", variable=self.fork_deadend_var)
+        fork_deadend_check.grid(row=4, column=0, columnspan=2, pady=5)
         
         # Initialize and Play/Pause buttons
         btn_frame = ttk.Frame(self.main_frame)
@@ -249,21 +247,13 @@ class SwarmConfigUI:
         ttk.Radiobutton(target_frame, text="Top Position (75, 20)", value="top", 
                        variable=self.target_pos_var).grid(row=1, column=1, pady=2)
         
-        # Update fork point options frame
-        fork_frame = ttk.LabelFrame(self.main_frame, text="Fork Point Options")
-        fork_frame.grid(row=base_row+11, column=0, columnspan=2, pady=5, sticky='ew')
-
-        fork_check = ttk.Checkbutton(fork_frame, text="Add Fork Point", variable=self.fork_var)
-        fork_check.grid(row=0, column=0, columnspan=2, pady=5)
-
-        ttk.Radiobutton(fork_frame, text="Right Position (120, 80)", value="right", 
-                       variable=self.fork_pos_var).grid(row=1, column=0, pady=2)
-        ttk.Radiobutton(fork_frame, text="Middle Position (width//2, height//2)", value="middle", 
-                       variable=self.fork_pos_var).grid(row=1, column=1, pady=2)
+        # Update fork and dead end marker option
+        fork_deadend_check = ttk.Checkbutton(self.main_frame, text="Add Fork and Dead End Markers", variable=self.fork_deadend_var)
+        fork_deadend_check.grid(row=base_row+12, column=0, columnspan=2, pady=5)
         
         # Update button frame
         btn_frame = ttk.Frame(self.main_frame)
-        btn_frame.grid(row=base_row+12, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=base_row+13, column=0, columnspan=2, pady=20)
         
         self.init_btn = ttk.Button(btn_frame, text="Initialize", command=self.initialize_simulation)
         self.init_btn.pack(side=tk.LEFT, padx=5)
@@ -284,8 +274,9 @@ class SwarmConfigUI:
                 'add_obstacles': self.obstacle_var.get(),
                 'add_target': self.target_var.get(),
                 'target_position': self.target_pos_var.get(),  # Add target position
-                'add_fork': self.fork_var.get(),
-                'fork_position': self.fork_pos_var.get(),
+                'add_fork': self.fork_var.get(),  # Always True, hidden from UI
+                'fork_position': self.fork_pos_var.get(),  # Always 'middle', hidden from UI
+                'add_fork_deadend': self.fork_deadend_var.get(),  # Add fork and dead end marker option
                 'rank_config': {}
             }
             
