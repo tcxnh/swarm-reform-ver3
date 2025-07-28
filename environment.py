@@ -30,6 +30,10 @@ class Environment:
         if config and 'rank_config' in config:
             self.rank_config = {int(k): int(v) for k, v in config['rank_config'].items()}
         self.rank_config_modified = False  # Flag to track if rank_config has been modified
+        
+        # Steel mill environmental hazard zones
+        self._initialize_environmental_zones()
+        
         self.initialize_agents(num_agents)
         self.history = []  # save all the step information of the simulation
         self.is_running = False  # Control whether agents should move
@@ -135,6 +139,86 @@ class Environment:
                 wall_mask[deadend2_y][deadend2_x] = 0
 
         return global_map, wall_mask
+
+    def _initialize_environmental_zones(self):
+        """
+        Initialize environmental hazard zones for steel mill simulation.
+        These zones simulate real-world conditions that affect robot communication and operation.
+        """
+        # High temperature zones (around furnaces, molten metal areas)
+        # Format: (center_x, center_y, radius, intensity)
+        self.high_temp_zones = [
+            (30, 30, 15, 0.8),   # Main furnace area - high intensity
+            (70, 40, 12, 0.6),   # Secondary heating zone
+            (50, 70, 10, 0.5),   # Cooling area - lower intensity
+            (80, 80, 8, 0.7),    # Hot metal processing
+        ]
+        
+        # Magnetic interference zones (around large equipment, electromagnetic systems)
+        # Format: (center_x, center_y, radius, intensity)
+        self.magnetic_zones = [
+            (40, 50, 20, 0.7),   # Large electromagnetic crane
+            (60, 20, 15, 0.5),   # Induction heating system
+            (20, 60, 12, 0.6),   # Electric arc furnace
+            (85, 60, 10, 0.4),   # Motor control center
+        ]
+        
+        # GPS obstruction zones (steel structures, large buildings)
+        # Format: (center_x, center_y, radius, intensity)
+        self.gps_obstruction_zones = [
+            (50, 50, 25, 0.9),   # Main building structure - very high obstruction
+            (75, 75, 18, 0.8),   # Secondary structure
+            (25, 75, 15, 0.7),   # Storage facility
+            (75, 25, 20, 0.8),   # Manufacturing hall
+        ]
+        
+        # Dynamic zones that can change over time
+        self.dynamic_zones = {
+            'radiation': [],      # Radiation zones (can appear during certain processes)
+            'gas_leak': [],       # Gas leak zones (emergency situations)
+            'equipment_failure': [] # Equipment failure zones
+        }
+        
+        # Zone update parameters
+        self.zone_update_interval = 50  # Update zones every 50 steps
+        self.last_zone_update = 0
+
+    def _update_dynamic_zones(self, current_step):
+        """
+        Update dynamic environmental zones based on simulation time.
+        Simulates changing conditions in the steel mill.
+        """
+        if current_step - self.last_zone_update < self.zone_update_interval:
+            return
+        
+        self.last_zone_update = current_step
+        
+        # Random radiation zones (during certain processes)
+        if random.random() < 0.1:  # 10% chance per update
+            radiation_x = random.randint(10, self.width - 10)
+            radiation_y = random.randint(10, self.height - 10)
+            self.dynamic_zones['radiation'].append((radiation_x, radiation_y, 8, 0.6, current_step + 30))  # Lasts 30 steps
+        
+        # Random gas leak simulation
+        if random.random() < 0.05:  # 5% chance per update
+            leak_x = random.randint(10, self.width - 10)
+            leak_y = random.randint(10, self.height - 10)
+            self.dynamic_zones['gas_leak'].append((leak_x, leak_y, 12, 0.8, current_step + 100))  # Lasts 100 steps
+            print(f"Gas leak detected at ({leak_x}, {leak_y})!")
+        
+        # Equipment failure zones
+        if random.random() < 0.03:  # 3% chance per update
+            failure_x = random.randint(10, self.width - 10)
+            failure_y = random.randint(10, self.height - 10)
+            self.dynamic_zones['equipment_failure'].append((failure_x, failure_y, 10, 0.7, current_step + 80))
+            print(f"Equipment failure at ({failure_x}, {failure_y})!")
+        
+        # Remove expired zones
+        for zone_type in self.dynamic_zones:
+            self.dynamic_zones[zone_type] = [
+                zone for zone in self.dynamic_zones[zone_type]
+                if zone[4] > current_step  # Check expiration time
+            ]
 
     def initialize_agents_random(self, num_agents, config=None):
         """
@@ -365,6 +449,14 @@ class Environment:
         return [[[] for _ in range(self.width)] for _ in range(self.height)]
 
     def step(self):
+        # Track current simulation step
+        if not hasattr(self, 'current_step'):
+            self.current_step = 0
+        self.current_step += 1
+        
+        # Update dynamic environmental zones
+        self._update_dynamic_zones(self.current_step)
+        
         self.comm_map = self._initialize_comm_map()
 
         # Shuffle update order
@@ -555,19 +647,19 @@ class Environment:
                     task_completed = msg.get('task_completion', 0)
                     break
 
-            # Draw circles with color based on split_tag (分流可视化)
+            # Draw circles with color based on split_tag and task completion
             if split_tag == 'left':
-                vis_color = 'orange'
+                vis_color = 'cyan'     # Left split
             elif split_tag == 'right':
-                vis_color = 'purple'
+                vis_color = 'magenta'  # Right split
             elif task_completed == 1:
-                vis_color = 'red'      # target
+                vis_color = 'lime'     # Target found
             elif task_completed == 2:
-                vis_color = 'green'    # fork
+                vis_color = 'green'    # Fork discovered
             elif task_completed == 3:
-                vis_color = 'brown'    # dead end detected
+                vis_color = 'brown'    # Dead end detected
             else:
-                vis_color = 'blue'
+                vis_color = 'blue'     # Normal operation
             vis = Circle((x, y), vr, fill=True, color=vis_color, alpha=0.05)
             comm = Circle((x, y), cr, fill=False, linestyle='--', color='gray', alpha=0.2)
             safe = Circle((x, y), sr, fill=False, linestyle='-', color='green', alpha=0.3)
