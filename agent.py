@@ -13,7 +13,6 @@ class Agent:
         """
         # --- Attributes ---
         self.id = agent_id
-        self.size = 1.0
         self.vision_range = vision_range
         self.comm_range = comm_range
         self.safety_range = (comm_range+vision_range)/2
@@ -40,11 +39,6 @@ class Agent:
         self.fork_direction = None  # Which direction this agent is relative to fork ('left', 'right', 'center')
         self.deadend_direction = None  # Which direction leads to dead end
         self.blocked_directions = set()  # Set of directions known to be blocked/dead ends
-        # --- Fork leader & split fields ---
-        self.is_fork_leader = False
-        self.assigned_direction = None  # For subordinate: 'left'/'right' or None
-        self.assigned_subordinate = {}  # For fork leader: {sub_id: direction}
-        self.fork_leader_id = -1  # For broadcast
 
 
 
@@ -201,10 +195,6 @@ class Agent:
             'position': self.position.copy(),  # just used for simulation
             'direct_sub_id': self.direct_sub_id.copy(),
             'direct_sup_id': self.direct_sup_id,
-            # --- fork分流相关 ---
-            'fork_leader_id': self.id if self.is_fork_leader else -1,
-            'assigned_direction': None,
-            'split_tag': None,  # 广播分流标签
             # --- dead end tracking ---
             'deadend_detected': self.deadend_detected,
             'known_deadend_areas': list(self.known_deadend_areas),  # Convert set to list for message
@@ -212,24 +202,13 @@ class Agent:
             'fork_direction': self.fork_direction,
             'deadend_direction': self.deadend_direction,
             'blocked_directions': list(self.blocked_directions),
-
         }
-        # 如果是fork leader，给被分配的subordinate单独发assigned_direction
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
                 x, y = x0 + dx, y0 + dy
                 if 0 <= x < len(comm_map[0]) and 0 <= y < len(comm_map):
                     if self._check_line_of_sight(x, y, global_map):
-                        # 检查是否是被分配的subordinate
-                        assigned_dir = None
-                        if self.is_fork_leader:
-                            for sub_id, direction in self.assigned_subordinate.items():
-                                if (int(self.position.x + dx), int(self.position.y + dy)) == (int(self.environment.agents[sub_id].position.x), int(self.environment.agents[sub_id].position.y)):
-                                    assigned_dir = direction
-                                    break
-                        msg = message.copy()
-                        msg['assigned_direction'] = assigned_dir
-                        comm_map[y][x].append(msg)
+                        comm_map[y][x].append(message.copy())
 
     def _remove_old_broadcast(self, comm_map): # remove the broadcast before the agent move 
         radius = int(self.comm_range)
@@ -299,10 +278,7 @@ class Agent:
                         self.blocked_directions.add(blocked_dir)
 
             # fork leader分流信号
-            if msg.get('fork_leader_id', -1) >= 0 and msg.get('assigned_direction') is not None:
-                if msg['assigned_direction'] in ['left', 'right'] and self.id in msg.get('direct_sub_id', []):
-                    self.assigned_direction = msg['assigned_direction']
-                    print(f"Agent {self.id} inherits split_tag {self.assigned_direction} from fork leader {msg['fork_leader_id']}")
+            # (Removed fork leader and assigned_direction logic)
 
             # categorize
             if msg['rank'] < self.rank and msg['rank'] >= 0:
@@ -690,15 +666,6 @@ class Agent:
         
         return False
 
-    def _can_see_fork_in_vision(self):
-        """
-        Check if agent can see fork marker in its vision range.
-        Only agents near fork should care about direction blocking.
-        """
-        for info in self.perceived_environment:
-            if info['type'] == 'fork':
-                return True
-        return False
 
     def _can_see_fork_in_vision(self):
         """
@@ -709,19 +676,7 @@ class Agent:
             if info['type'] == 'fork':
                 return True
         return False
-
-    def _move_towards_assigned_direction(self):
-        """
-        按assigned_direction优先移动（简单实现：左/右）。
-        """
-        if self.assigned_direction == 'left':
-            move_x, move_y = -1, 0
-        elif self.assigned_direction == 'right':
-            move_x, move_y = 1, 0
-        else:
-            move_x, move_y = 0, 0
-        self._attempt_move(move_x, move_y)
-
+    
     # ---------- Rank-based Search Behavior ---------
     def _update_rank_search(self):
         # general steps: decide rank; decide direct_sup_id; decide direct_sub_id
@@ -1082,22 +1037,6 @@ class Agent:
         self.step_number = 5
 
     # Helper methods
-    def _any_superior_in_safety_range(self):
-        """Check if any superior is within safety range"""
-        return any(
-            self._calculate_distance(msg) <= self.safety_range
-            for msg in self.superiors
-        )
-
-    def _get_best_superior(self):
-        """Get the highest-rank closest superior"""
-        if not self.superiors:
-            return None
-        
-        max_rank = max(msg['rank'] for msg in self.superiors)
-        top_superiors = [msg for msg in self.superiors if msg['rank'] == max_rank]
-        
-        return min(top_superiors, key=self._calculate_distance)
 
     def _get_nearest_in_range(self, agents, max_range):
         """Get nearest agent within range, sorted by rank"""
@@ -1212,8 +1151,6 @@ class Agent:
         if move_x == 0 and move_y == 0:
             return
         
-        self.last_position = self.position.copy()  # Save current position before moving
-
         # Occupied cells from perceived walls
         occupied = {
             (int(self.position.x + info['relative_position'][0]),
@@ -1327,404 +1264,7 @@ class Agent:
             move_y = round((dy / dist) * self.speed)
             self._attempt_move(move_x, move_y)
 
-    # =====================
-    # Simulation Interface
-    # =====================
-        """
-        Update environmental stress based on position and environment conditions.
-        Simulates steel mill conditions: high temperature, magnetic interference, radiation.
-        """
-        x, y = int(self.position.x), int(self.position.y)
-        
-        # Reset stress
-        self.environmental_stress = 0.0
-        
-        # High temperature zones (simulated around specific areas)
-        if hasattr(self, 'environment') and hasattr(self.environment, 'high_temp_zones'):
-            for zone_x, zone_y, temp_radius, temp_intensity in self.environment.high_temp_zones:
-                dist = math.sqrt((x - zone_x)**2 + (y - zone_y)**2)
-                if dist <= temp_radius:
-                    stress = temp_intensity * (1 - dist / temp_radius)
-                    self.environmental_stress += stress
-        
-        # Magnetic interference zones
-        if hasattr(self, 'environment') and hasattr(self.environment, 'magnetic_zones'):
-            for zone_x, zone_y, mag_radius, mag_intensity in self.environment.magnetic_zones:
-                dist = math.sqrt((x - zone_x)**2 + (y - zone_y)**2)
-                if dist <= mag_radius:
-                    stress = mag_intensity * (1 - dist / mag_radius)
-                    self.environmental_stress += stress
-        
-        # GPS obstruction (steel structures)
-        if hasattr(self, 'environment') and hasattr(self.environment, 'gps_obstruction_zones'):
-            for zone_x, zone_y, obs_radius, obs_intensity in self.environment.gps_obstruction_zones:
-                dist = math.sqrt((x - zone_x)**2 + (y - zone_y)**2)
-                if dist <= obs_radius:
-                    stress = obs_intensity * (1 - dist / obs_radius)
-                    self.environmental_stress += stress
-        
-        # Update degradation factor based on stress
-        self.degradation_factor = max(0.1, 1.0 - self.environmental_stress * 0.5)
-        
-        # Update communication and vision ranges
-        self.comm_range = self.original_comm_range * self.degradation_factor
-        self.vision_range = self.original_vision_range * self.degradation_factor
-        
-        # Add dynamic zones stress
-        if hasattr(self, 'environment') and hasattr(self.environment, 'dynamic_zones'):
-            for zone_type, zones in self.environment.dynamic_zones.items():
-                for zone_x, zone_y, zone_radius, zone_intensity, expiry_time in zones:
-                    dist = math.sqrt((x - zone_x)**2 + (y - zone_y)**2)
-                    if dist <= zone_radius:
-                        stress = zone_intensity * (1 - dist / zone_radius)
-                        self.environmental_stress += stress
-                        # Add critical data if in danger zone
-                        if zone_type == 'gas_leak' and stress > 0.4:
-                            if not any(data.get('type') == 'gas_leak' for data in self.data_to_relay):
-                                self.data_to_relay.append({
-                                    'type': 'gas_leak',
-                                    'location': self.position.copy(),
-                                    'detected_at': zone_type,
-                                    'urgency': 'critical'
-                                })
-        
-        # Update failure probability
-        self.failure_probability = min(0.1, self.environmental_stress * 0.02)
 
-    def _check_node_failures(self):
-        """
-        Check for random node failures based on environmental stress and failure probability.
-        """
-        if self.health_status == 'failed':
-            return
-        
-        # Random failure check
-        if random.random() < self.failure_probability:
-            if self.health_status == 'normal':
-                self.health_status = 'degraded'
-                print(f"Agent {self.id} degraded due to environmental stress")
-            elif self.health_status == 'degraded':
-                if random.random() < 0.3:  # 30% chance to fail when degraded
-                    self.health_status = 'failed'
-                    print(f"Agent {self.id} failed!")
-                    self._initiate_failure_response()
-        
-        # Recovery mechanism
-        elif self.health_status == 'degraded' and random.random() < 0.1:
-            self.health_status = 'recovering'
-            print(f"Agent {self.id} beginning recovery")
-        elif self.health_status == 'recovering' and random.random() < 0.2:
-            self.health_status = 'normal'
-            print(f"Agent {self.id} fully recovered")
-
-    def _initiate_failure_response(self):
-        """
-        Initiate immediate response when this agent fails.
-        """
-        # Broadcast failure message to all nearby agents
-        self.data_to_relay.append({
-            'type': 'node_failure',
-            'failed_node_id': self.id,
-            'position': self.position.copy(),
-            'timestamp': getattr(self, 'current_step', 0),
-            'subordinates': self.direct_sub_id.copy(),
-            'superior': self.direct_sup_id
-        })
-        
-        # Clear connections
-        self.direct_sub_id = []
-        self.direct_sup_id = -1
-        self.rank = 9999  # Very high rank to avoid being selected
-
-    def _detect_failed_connections(self):
-        """
-        Detect failed connections by tracking communication timeouts.
-        """
-        current_step = getattr(self, 'current_step', 0)
-        failed_agents = []
-        
-        # Check for agents that haven't communicated recently
-        for agent_id, last_time in self.last_communication_time.items():
-            if current_step - last_time > self.communication_timeout:
-                failed_agents.append(agent_id)
-        
-        # Handle failed connections
-        for failed_id in failed_agents:
-            self._handle_failed_connection(failed_id)
-            # Remove from tracking
-            if failed_id in self.last_communication_time:
-                del self.last_communication_time[failed_id]
-
-    def _handle_failed_connection(self, failed_agent_id):
-        """
-        Handle the failure of a connected agent.
-        """
-        #print(f"Agent {self.id} detected failure of agent {failed_agent_id}")
-        
-        # If failed agent was our superior, trigger self-healing
-        if self.direct_sup_id == failed_agent_id:
-            self.direct_sup_id = -1
-            self._initiate_self_healing()
-        
-        # If failed agent was our subordinate, remove it
-        if failed_agent_id in self.direct_sub_id:
-            self.direct_sub_id.remove(failed_agent_id)
-        
-        # Remove from backup connections
-        if failed_agent_id in self.backup_connections:
-            self.backup_connections.remove(failed_agent_id)
-
-    def _initiate_self_healing(self):
-        """
-        Initiate self-healing process when connection is lost.
-        """
-        if not self.self_healing_enabled:
-            return
-        
-        print(f"Agent {self.id} initiating self-healing process")
-        
-        # Try backup connections first
-        for backup_id in self.backup_connections:
-            if backup_id in [msg['id'] for msg in self.received_messages]:
-                self._attempt_reconnection(backup_id)
-                return
-        
-        # If no backup available, search for new superior
-        self._search_new_superior()
-
-    def _attempt_reconnection(self, target_agent_id):
-        """
-        Attempt to reconnect to a target agent.
-        """
-        target_msg = next((msg for msg in self.received_messages 
-                          if msg['id'] == target_agent_id), None)
-        
-        if target_msg and target_msg['rank'] < self.rank:
-            self.direct_sup_id = target_agent_id
-            print(f"Agent {self.id} reconnected to agent {target_agent_id}")
-            return True
-        return False
-
-    def _search_new_superior(self):
-        """
-        Search for a new superior agent when connection is lost.
-        """
-        # Find available agents with lower rank
-        available_superiors = []
-        for msg in self.received_messages:
-            if (msg['type'] == 'status' and 
-                msg['rank'] < self.rank and 
-                msg['id'] != self.id and
-                msg.get('direct_sup_id', -1) >= 0):  # Only connected agents
-                
-                # Check if they have capacity
-                sub_count = len(msg.get('direct_sub_id', []))
-                max_subs = self._get_max_subordinates()
-                if sub_count < max_subs:
-                    available_superiors.append(msg)
-        
-        if available_superiors:
-            # Choose the closest available superior
-            best_superior = min(available_superiors, 
-                              key=lambda x: self._calculate_distance(x))
-            self.direct_sup_id = best_superior['id']
-            self.rank = best_superior['rank'] + 1
-            print(f"Agent {self.id} found new superior: agent {best_superior['id']}")
-
-    def _update_backup_connections(self):
-        """
-        Maintain backup connections for redundancy.
-        """
-        # Clear old backup connections that are too far
-        self.backup_connections = [
-            backup_id for backup_id in self.backup_connections
-            if backup_id in [msg['id'] for msg in self.received_messages]
-        ]
-        
-        # Add new backup connections from nearby agents
-        for msg in self.received_messages:
-            if (msg['type'] == 'status' and 
-                msg['id'] != self.id and 
-                msg['id'] != self.direct_sup_id and
-                msg['id'] not in self.backup_connections and
-                msg['rank'] <= self.rank and
-                len(self.backup_connections) < 3):  # Max 3 backup connections
-                
-                dist = self._calculate_distance(msg)
-                if dist <= self.comm_range * 0.8:  # Within 80% of comm range
-                    self.backup_connections.append(msg['id'])
-
-    def _optimize_topology(self):
-        """
-        Dynamically optimize network topology based on current conditions.
-        """
-        if not self.topology_optimization_enabled:
-            return
-        
-        # Calculate connection quality for all nearby agents
-        self._update_connection_quality()
-        
-        # Optimize superior selection if current connection is poor
-        if (self.direct_sup_id != -1 and 
-            self.direct_sup_id in self.connection_quality and
-            self.connection_quality[self.direct_sup_id] < 0.3):
-            
-            self._consider_superior_change()
-        
-        # Balance subordinate load
-        self._balance_subordinate_load()
-
-    def _update_connection_quality(self):
-        """
-        Update connection quality scores for nearby agents.
-        """
-        self.connection_quality = {}
-        
-        for msg in self.received_messages:
-            if msg['type'] == 'status':
-                agent_id = msg['id']
-                
-                # Calculate quality based on distance, environmental stress, and agent health
-                dist = self._calculate_distance(msg)
-                distance_factor = max(0, 1 - dist / self.comm_range)
-                
-                stress_factor = max(0, 1 - msg.get('environmental_stress', 0))
-                health_factor = 1.0 if msg.get('health_status', 'normal') == 'normal' else 0.5
-                
-                quality = distance_factor * stress_factor * health_factor
-                self.connection_quality[agent_id] = quality
-
-    def _consider_superior_change(self):
-        """
-        Consider changing superior if current connection quality is poor.
-        """
-        current_superior_quality = self.connection_quality.get(self.direct_sup_id, 0)
-        
-        # Find better alternatives
-        better_alternatives = []
-        for msg in self.received_messages:
-            if (msg['type'] == 'status' and 
-                msg['rank'] < self.rank and
-                msg['id'] != self.direct_sup_id and
-                msg['id'] in self.connection_quality):
-                
-                quality = self.connection_quality[msg['id']]
-                if quality > current_superior_quality + 0.2:  # Significant improvement
-                    sub_count = len(msg.get('direct_sub_id', []))
-                    max_subs = self._get_max_subordinates()
-                    if sub_count < max_subs:
-                        better_alternatives.append((msg, quality))
-        
-        if better_alternatives:
-            # Choose the best alternative
-            best_alternative, best_quality = max(better_alternatives, key=lambda x: x[1])
-            self.direct_sup_id = best_alternative['id']
-            self.rank = best_alternative['rank'] + 1
-            print(f"Agent {self.id} optimized connection: switched to agent {best_alternative['id']} (quality: {best_quality:.2f})")
-
-    def _balance_subordinate_load(self):
-        """
-        Balance subordinate load among nearby agents.
-        """
-        if len(self.direct_sub_id) <= 1:
-            return  # No need to balance with 1 or fewer subordinates
-        
-        # Find nearby agents with same rank that have fewer subordinates
-        underloaded_peers = []
-        for msg in self.received_messages:
-            if (msg['type'] == 'status' and 
-                msg['rank'] == self.rank and
-                msg['id'] != self.id):
-                
-                peer_sub_count = len(msg.get('direct_sub_id', []))
-                if peer_sub_count < len(self.direct_sub_id) - 1:
-                    underloaded_peers.append(msg)
-        
-        if underloaded_peers and len(self.direct_sub_id) > 2:
-            # Transfer one subordinate to the least loaded peer
-            least_loaded = min(underloaded_peers, 
-                             key=lambda x: len(x.get('direct_sub_id', [])))
-            
-            # Remove the most distant subordinate
-            if self.direct_sub_id:
-                subordinate_distances = []
-                for sub_id in self.direct_sub_id:
-                    sub_msg = next((msg for msg in self.received_messages 
-                                  if msg['id'] == sub_id), None)
-                    if sub_msg:
-                        dist = self._calculate_distance(sub_msg)
-                        subordinate_distances.append((sub_id, dist))
-                
-                if subordinate_distances:
-                    # Remove the most distant subordinate
-                    most_distant_id = max(subordinate_distances, key=lambda x: x[1])[0]
-                    self.direct_sub_id.remove(most_distant_id)
-                    print(f"Agent {self.id} load balancing: transferred subordinate {most_distant_id} to peer")
-
-    def _relay_critical_data(self):
-        """
-        Relay critical data towards the entrance/control center.
-        """
-        if not self.data_to_relay:
-            return
-        
-        # Find best route to entrance
-        self._update_route_to_entrance()
-        
-        # Process data queue
-        for data in self.data_to_relay[:]:  # Copy list to avoid modification during iteration
-            if self._attempt_data_relay(data):
-                self.data_to_relay.remove(data)
-
-    def _update_route_to_entrance(self):
-        """
-        Update the route to entrance for data relay.
-        """
-        # Find path to entrance through connected agents
-        if self.is_entrance:
-            self.route_to_entrance = [self.id]
-            return
-        
-        # Use direct superior as next hop if available
-        if self.direct_sup_id != -1:
-            superior_msg = next((msg for msg in self.received_messages 
-                               if msg['id'] == self.direct_sup_id), None)
-            if superior_msg:
-                self.route_to_entrance = [self.id, self.direct_sup_id]
-                return
-        
-        # Find alternative route through backup connections
-        for backup_id in self.backup_connections:
-            backup_msg = next((msg for msg in self.received_messages 
-                             if msg['id'] == backup_id), None)
-            if backup_msg and backup_msg['rank'] < self.rank:
-                self.route_to_entrance = [self.id, backup_id]
-                return
-        
-        # No route available
-        self.route_to_entrance = []
-
-    def _attempt_data_relay(self, data):
-        """
-        Attempt to relay data towards the control center.
-        """
-        if not self.route_to_entrance or len(self.route_to_entrance) < 2:
-            return False
-        
-        next_hop = self.route_to_entrance[1]
-        
-        # Check if next hop is still available
-        next_hop_msg = next((msg for msg in self.received_messages 
-                           if msg['id'] == next_hop), None)
-        
-        if next_hop_msg:
-            # In a real implementation, this would send the data
-            # For simulation, we'll just print the relay action
-            if data.get('type') in self.critical_data_types:
-                print(f"Agent {self.id} relaying critical data '{data['type']}' to agent {next_hop}")
-            return True
-        
-        return False
 
     # =====================
     # Simulation Interface
@@ -1740,8 +1280,3 @@ class Agent:
         self._mode_based_behavior()
         
         self._broadcast_to_comm_map(comm_map, global_map) # simulation only
-
-
-
-
-   
