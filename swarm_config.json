@@ -10,6 +10,7 @@
     "add_fork": true,
     "fork_position": "middle",
     "add_fork_deadend": true,
+    "terrain_type": "cross_shape",
     "rank_config": {
         "0": 1,
         "1": 1,

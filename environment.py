@@ -61,45 +61,81 @@ class Environment:
 
         # Add obstacles if configured
         if hasattr(self, 'config') and self.config.get('add_obstacles', False):
-            # 先整体填满障碍（墙），再挖出Y型通路
-            for y in range(self.height):
-                for x in range(self.width):
-                    if 0 < x < self.width-1 and 0 < y < self.height-1:
-                        global_map[y][x] = '#'
-                        wall_mask[y][x] = 1
-            # Y型通路参数
-            cx = self.width // 2
-            cy = self.height // 2
-            # 极大加宽
-            main_width = 27
-            branch_width = 22
-            # 下干（竖线）——从cy一直挖到入口agent的y坐标
-            entrance_y = self.height - 2
-            for y in range(cy, entrance_y+1):
+            terrain_type = self.config.get('terrain_type', 'y_shape')
+            
+            if terrain_type == 'y_shape':
+                # 先整体填满障碍（墙），再挖出Y型通路
+                for y in range(self.height):
+                    for x in range(self.width):
+                        if 0 < x < self.width-1 and 0 < y < self.height-1:
+                            # 不要覆盖已经存在的死路标记
+                            if global_map[y][x] != 'X':
+                                global_map[y][x] = '#'
+                                wall_mask[y][x] = 1
+                # Y型通路参数
+                cx = self.width // 2
+                cy = self.height // 2
+                # 极大加宽
+                main_width = 27
+                branch_width = 22
+                # 下干（竖线）——从cy一直挖到入口agent的y坐标
+                entrance_y = self.height - 2
+                for y in range(cy, entrance_y+1):
+                    for dx in range(-main_width//2, main_width//2+1):
+                        global_map[y][cx+dx] = ' '
+                        wall_mask[y][cx+dx] = 0
+                # 左分支（左上斜线，短，夹角更大）
+                for i in range(0, 25):
+                    x = cx - 12 - int(i*1.2)  # 斜率更大
+                    y = cy - i
+                    for dx in range(-branch_width//2, branch_width//2+1):
+                        if 0 < x+dx < self.width-1 and 0 < y < self.height-1:
+                            global_map[y][x+dx] = ' '
+                            wall_mask[y][x+dx] = 0
+                # 右分支（右上斜线，更长更宽，夹角更大）
+                for i in range(0, 90):
+                    x = cx + 12 + int(i*1.8)  # 斜率更大，右分支更长
+                    y = cy - i
+                    for dx in range(-branch_width, branch_width+1):
+                        if 0 < x+dx < self.width-1 and 0 < y < self.height-1:
+                            global_map[y][x+dx] = ' '
+                            wall_mask[y][x+dx] = 0
+                # 保证入口agent初始位置没有障碍物
+                entrance_x = self.width // 2
                 for dx in range(-main_width//2, main_width//2+1):
-                    global_map[y][cx+dx] = ' '
-                    wall_mask[y][cx+dx] = 0
-            # 左分支（左上斜线，短，夹角更大）
-            for i in range(0, 25):
-                x = cx - 12 - int(i*1.2)  # 斜率更大
-                y = cy - i
-                for dx in range(-branch_width//2, branch_width//2+1):
-                    if 0 < x+dx < self.width-1 and 0 < y < self.height-1:
-                        global_map[y][x+dx] = ' '
-                        wall_mask[y][x+dx] = 0
-            # 右分支（右上斜线，更长更宽，夹角更大）
-            for i in range(0, 90):
-                x = cx + 12 + int(i*1.8)  # 斜率更大，右分支更长
-                y = cy - i
-                for dx in range(-branch_width, branch_width+1):
-                    if 0 < x+dx < self.width-1 and 0 < y < self.height-1:
-                        global_map[y][x+dx] = ' '
-                        wall_mask[y][x+dx] = 0
-            # 保证入口agent初始位置没有障碍物
-            entrance_x = self.width // 2
-            for dx in range(-main_width//2, main_width//2+1):
-                global_map[entrance_y][entrance_x+dx] = ' '
-                wall_mask[entrance_y][entrance_x+dx] = 0
+                    global_map[entrance_y][entrance_x+dx] = ' '
+                    wall_mask[entrance_y][entrance_x+dx] = 0
+                    
+            elif terrain_type == 'cross_shape':
+                # 先整体填满障碍（墙），再挖出十字型通路
+                for y in range(self.height):
+                    for x in range(self.width):
+                        if 0 < x < self.width-1 and 0 < y < self.height-1:
+                            # 不要覆盖已经存在的死路标记
+                            if global_map[y][x] != 'X':
+                                global_map[y][x] = '#'
+                                wall_mask[y][x] = 1
+                
+                # 创建十字形状
+                cx = self.width // 2
+                cy = self.height // 2
+                
+                # 竖着的通道（长）- 加宽两倍
+                vertical_width = 30
+                for y in range(cy - 75, cy + 76):  # 150 units long vertical path
+                    for dx in range(-vertical_width//2, vertical_width//2 + 1):
+                        if 0 < cx + dx < self.width-1 and 0 < y < self.height-1:
+                            global_map[y][cx + dx] = ' '
+                            wall_mask[y][cx + dx] = 0
+                
+                # 横着的通道（短）- 加宽两倍
+                horizontal_width = 24
+                horizontal_length = 50
+                for x in range(cx - horizontal_length//2, cx + horizontal_length//2 + 1):
+                    for dy in range(-horizontal_width//2, horizontal_width//2 + 1):
+                        if 0 < x < self.width-1 and 0 < cy + dy < self.height-1:
+                            global_map[cy + dy][x] = ' '
+                            wall_mask[cy + dy][x] = 0
 
         # Add target point if configured (independent of obstacles)
         if hasattr(self, 'config') and self.config.get('add_target', False):
@@ -113,30 +149,85 @@ class Environment:
 
         # Add fork point if configured (independent of obstacles)
         if hasattr(self, 'config') and self.config.get('add_fork', False):
-            fork_position = self.config.get('fork_position', 'right')
-            if fork_position == 'right':
-                fork_x, fork_y = 120, 80  # Right position (和target错开)
-            elif fork_position == 'middle':
-                fork_x, fork_y = self.width // 2, self.height // 2  # Middle position
+            terrain_type = self.config.get('terrain_type', 'cross_shape')
+            
+            if terrain_type == 'cross_shape':
+                # Add four fork points at the four corners of the cross intersection
+                cx = self.width // 2
+                cy = self.height // 2
+                vertical_width = 30
+                horizontal_width = 24
+                
+                # Top-left fork
+                fork1_x, fork1_y = cx - horizontal_width//2 - 2, cy - vertical_width//2 - 2
+                if 0 < fork1_x < self.width-1 and 0 < fork1_y < self.height-1:
+                    global_map[fork1_y][fork1_x] = '^'
+                    wall_mask[fork1_y][fork1_x] = 0
+                
+                # Top-right fork
+                fork2_x, fork2_y = cx + horizontal_width//2 + 2, cy - vertical_width//2 - 2
+                if 0 < fork2_x < self.width-1 and 0 < fork2_y < self.height-1:
+                    global_map[fork2_y][fork2_x] = '^'
+                    wall_mask[fork2_y][fork2_x] = 0
+                
+                # Bottom-left fork
+                fork3_x, fork3_y = cx - horizontal_width//2 - 2, cy + vertical_width//2 + 2
+                if 0 < fork3_x < self.width-1 and 0 < fork3_y < self.height-1:
+                    global_map[fork3_y][fork3_x] = '^'
+                    wall_mask[fork3_y][fork3_x] = 0
+                
+                # Bottom-right fork
+                fork4_x, fork4_y = cx + horizontal_width//2 + 2, cy + vertical_width//2 + 2
+                if 0 < fork4_x < self.width-1 and 0 < fork4_y < self.height-1:
+                    global_map[fork4_y][fork4_x] = '^'
+                    wall_mask[fork4_y][fork4_x] = 0
             else:
-                fork_x, fork_y = 75, 40   # fallback for legacy 'top'
-            global_map[fork_y][fork_x] = '^'  # Set fork point
-            wall_mask[fork_y][fork_x] = 0  # Fork is not a wall
+                # Original fork logic for other terrain types
+                fork_position = self.config.get('fork_position', 'right')
+                if fork_position == 'right':
+                    fork_x, fork_y = 120, 80  # Right position (和target错开)
+                elif fork_position == 'middle':
+                    fork_x, fork_y = self.width // 2, self.height // 2  # Middle position
+                else:
+                    fork_x, fork_y = 75, 40   # fallback for legacy 'top'
+                global_map[fork_y][fork_x] = '^'  # Set fork point
+                wall_mask[fork_y][fork_x] = 0  # Fork is not a wall
 
-        # Add fork and dead end markers if configured
+        # Add fork and dead end markers if configured (BEFORE obstacles)
         if hasattr(self, 'config') and self.config.get('add_fork_deadend', False):
-            # 左上分支死路
-            cx = self.width // 2
-            cy = self.height // 2
-            deadend1_x, deadend1_y = cx - 40, cy - 22
-            if 0 < deadend1_x < self.width-1 and 0 < deadend1_y < self.height-1:
-                global_map[deadend1_y][deadend1_x] = 'X'
-                wall_mask[deadend1_y][deadend1_x] = 0
-            # 右上分支死路
-            deadend2_x, deadend2_y = cx + 90, cy - 70
-            if 0 < deadend2_x < self.width-1 and 0 < deadend2_y < self.height-1:
-                global_map[deadend2_y][deadend2_x] = 'X'
-                wall_mask[deadend2_y][deadend2_x] = 0
+            terrain_type = self.config.get('terrain_type', 'cross_shape')  # Default to Cross shape
+            
+            if terrain_type == 'y_shape':
+                # Y-shaped terrain (existing implementation)
+                cx = self.width // 2
+                cy = self.height // 2
+                deadend1_x, deadend1_y = cx - 40, cy - 22
+                if 0 < deadend1_x < self.width-1 and 0 < deadend1_y < self.height-1:
+                    global_map[deadend1_y][deadend1_x] = 'X'
+                    wall_mask[deadend1_y][deadend1_x] = 0
+                # 右上分支死路
+                deadend2_x, deadend2_y = cx + 90, cy - 70
+                if 0 < deadend2_x < self.width-1 and 0 < deadend2_y < self.height-1:
+                    global_map[deadend2_y][deadend2_x] = 'X'
+                    wall_mask[deadend2_y][deadend2_x] = 0
+                    
+            elif terrain_type == 'cross_shape':
+                # Cross-shaped terrain dead ends
+                cx = self.width // 2
+                cy = self.height // 2
+                horizontal_length = 50
+                
+                # Left dead end (at left end of horizontal path)
+                deadend1_x, deadend1_y = cx - horizontal_length//2, cy
+                if 0 < deadend1_x < self.width-1 and 0 < deadend1_y < self.height-1:
+                    global_map[deadend1_y][deadend1_x] = 'X'
+                    wall_mask[deadend1_y][deadend1_x] = 0
+                    
+                # Right dead end (at right end of horizontal path)
+                deadend2_x, deadend2_y = cx + horizontal_length//2, cy
+                if 0 < deadend2_x < self.width-1 and 0 < deadend2_y < self.height-1:
+                    global_map[deadend2_y][deadend2_x] = 'X'
+                    wall_mask[deadend2_y][deadend2_x] = 0
 
         return global_map, wall_mask
 

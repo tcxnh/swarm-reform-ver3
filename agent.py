@@ -108,31 +108,34 @@ class Agent:
             for dy in range(-vision_radius, vision_radius + 1):
                 x, y = x0 + dx, y0 + dy
                 if 0 <= x < len(global_map[0]) and 0 <= y < len(global_map):
+                    # Walls should always be detected for collision avoidance (no line of sight check)
                     if global_map[y][x] == '#':
                         self.perceived_environment.append({
                             'type': 'wall',
                             'relative_position': (dx, dy)
                         })
                     
-                    # targeted object find
-                    if global_map[y][x] == '*':
-                        self.perceived_environment.append({
-                            'type': 'target',
-                            'relative_position': (dx, dy)
-                        })
-                        self.task_completion_index = 1 
-                    # fork object find
-                    if global_map[y][x] == '^':
-                        self.perceived_environment.append({
-                            'type': 'fork',
-                            'relative_position': (dx, dy)
-                        })
-                    # dead end object find
-                    if global_map[y][x] == 'X':
-                        self.perceived_environment.append({
-                            'type': 'deadend',
-                            'relative_position': (dx, dy)
-                        })
+                    # Other objects (target, fork, deadend) require line of sight check
+                    if self._check_line_of_sight(x, y, global_map):
+                        # targeted object find
+                        if global_map[y][x] == '*':
+                            self.perceived_environment.append({
+                                'type': 'target',
+                                'relative_position': (dx, dy)
+                            })
+                            self.task_completion_index = 1 
+                        # fork object find
+                        if global_map[y][x] == '^':
+                            self.perceived_environment.append({
+                                'type': 'fork',
+                                'relative_position': (dx, dy)
+                            })
+                        # dead end object find
+                        if global_map[y][x] == 'X':
+                            self.perceived_environment.append({
+                                'type': 'deadend',
+                                'relative_position': (dx, dy)
+                            })
                 else:
                     # Treat out-of-bounds as wall
                     self.perceived_environment.append({

@@ -43,11 +43,11 @@ class SwarmConfigUI:
         
     def create_widgets(self):
         # Create main frame
-        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame = ttk.Frame(self.root, padding="5 5 10 15")  # top=5, right=10, bottom=15, left=5
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Function Mode Selection Section
-        ttk.Label(self.main_frame, text="Function Mode", font=('Arial', 12, 'bold')).grid(row=0, column=0, columnspan=2, pady=10)
+        ttk.Label(self.main_frame, text="Function Mode", font=('Arial', 12, 'bold')).grid(row=0, column=0, columnspan=2, pady=5)
         
         self.function_mode_var = tk.StringVar(value="flood-evol-search")
         modes = [
@@ -58,11 +58,11 @@ class SwarmConfigUI:
         
         for i, (text, value) in enumerate(modes):
             ttk.Radiobutton(self.main_frame, text=text, value=value, variable=self.function_mode_var).grid(
-                row=i+1, column=0, columnspan=2, pady=5, sticky=tk.W
+                row=i+1, column=0, columnspan=2, pady=2, sticky=tk.W
             )
         
         # Rank Configuration Section
-        ttk.Label(self.main_frame, text="Rank Configuration", font=('Arial', 12, 'bold')).grid(row=4, column=0, columnspan=2, pady=10)
+        ttk.Label(self.main_frame, text="Rank Configuration", font=('Arial', 12, 'bold')).grid(row=4, column=0, columnspan=2, pady=5)
         
         # Add real-time update checkbox
         self.realtime_update_var = tk.BooleanVar(value=False)
@@ -75,23 +75,23 @@ class SwarmConfigUI:
         # Create rank config entries
         for i, rank in enumerate(sorted(self.rank_config.keys())):
             label = ttk.Label(self.main_frame, text=f"Rank {rank}:")
-            label.grid(row=i+5, column=0, padx=5, pady=5)
+            label.grid(row=i+5, column=0, padx=5, pady=2)
             self.rank_labels[rank] = label
             
             entry = ttk.Entry(self.main_frame, width=10)
             entry.insert(0, str(self.rank_config[rank]))
-            entry.grid(row=i+5, column=1, padx=5, pady=5)
+            entry.grid(row=i+5, column=1, padx=5, pady=2)
             self.rank_entries[rank] = entry
         
         # Add/Remove Rank buttons
         rank_btn_frame = ttk.Frame(self.main_frame)
-        rank_btn_frame.grid(row=len(self.rank_config)+5, column=0, columnspan=2, pady=10)
+        rank_btn_frame.grid(row=len(self.rank_config)+5, column=0, columnspan=2, pady=5)
         
         ttk.Button(rank_btn_frame, text="Add Rank", command=self.add_rank).pack(side=tk.LEFT, padx=5)
         ttk.Button(rank_btn_frame, text="Remove Rank", command=self.remove_rank).pack(side=tk.LEFT, padx=5)
         
         # Initialization Method Section
-        ttk.Label(self.main_frame, text="Initialization Method", font=('Arial', 12, 'bold')).grid(row=len(self.rank_config)+6, column=0, columnspan=2, pady=10)
+        ttk.Label(self.main_frame, text="Initialization Method", font=('Arial', 12, 'bold')).grid(row=len(self.rank_config)+6, column=0, columnspan=2, pady=5)
         
         self.init_var = tk.StringVar(value="grid")
         methods = [
@@ -101,44 +101,44 @@ class SwarmConfigUI:
         
         for i, (text, value) in enumerate(methods):
             ttk.Radiobutton(self.main_frame, text=text, value=value, variable=self.init_var).grid(
-                row=len(self.rank_config)+7+i, column=0, columnspan=2, pady=5, sticky=tk.W
+                row=len(self.rank_config)+7+i, column=0, columnspan=2, pady=2, sticky=tk.W
             )
         
         # Environment Parameters
         ttk.Label(self.main_frame, text="Environment Parameters", font=('Arial', 12, 'bold')).grid(
-            row=len(self.rank_config)+10, column=0, columnspan=2, pady=10
+            row=len(self.rank_config)+10, column=0, columnspan=2, pady=5
         )
         
         # Number of agents
-        ttk.Label(self.main_frame, text="Number of Agents:").grid(row=len(self.rank_config)+11, column=0, padx=5, pady=5)
+        ttk.Label(self.main_frame, text="Number of Agents:").grid(row=len(self.rank_config)+11, column=0, padx=5, pady=2)
         self.num_agents_entry = ttk.Entry(self.main_frame, width=10)
         self.num_agents_entry.insert(0, str(self.num_agents))
-        self.num_agents_entry.grid(row=len(self.rank_config)+11, column=1, padx=5, pady=5)
+        self.num_agents_entry.grid(row=len(self.rank_config)+11, column=1, padx=5, pady=2)
         
         # Width
-        ttk.Label(self.main_frame, text="Width:").grid(row=len(self.rank_config)+12, column=0, padx=5, pady=5)
+        ttk.Label(self.main_frame, text="Width:").grid(row=len(self.rank_config)+12, column=0, padx=5, pady=2)
         self.width_entry = ttk.Entry(self.main_frame, width=10)
         self.width_entry.insert(0, str(self.width))
-        self.width_entry.grid(row=len(self.rank_config)+12, column=1, padx=5, pady=5)
+        self.width_entry.grid(row=len(self.rank_config)+12, column=1, padx=5, pady=2)
         
         # Height
-        ttk.Label(self.main_frame, text="Height:").grid(row=len(self.rank_config)+13, column=0, padx=5, pady=5)
+        ttk.Label(self.main_frame, text="Height:").grid(row=len(self.rank_config)+13, column=0, padx=5, pady=2)
         self.height_entry = ttk.Entry(self.main_frame, width=10)
         self.height_entry.insert(0, str(self.height))
-        self.height_entry.grid(row=len(self.rank_config)+13, column=1, padx=5, pady=5)
+        self.height_entry.grid(row=len(self.rank_config)+13, column=1, padx=5, pady=2)
         
         # Add obstacle option
         self.obstacle_var = tk.BooleanVar(value=True)
         obstacle_check = ttk.Checkbutton(self.main_frame, text="Add Obstacles", variable=self.obstacle_var)
-        obstacle_check.grid(row=len(self.rank_config)+14, column=0, columnspan=2, pady=5)
+        obstacle_check.grid(row=len(self.rank_config)+14, column=0, columnspan=2, pady=2)
         
         # Add target point options
         target_frame = ttk.LabelFrame(self.main_frame, text="Target Point Options")
-        target_frame.grid(row=len(self.rank_config)+15, column=0, columnspan=2, pady=5, sticky='ew')
+        target_frame.grid(row=len(self.rank_config)+15, column=0, columnspan=2, pady=2, sticky='ew')
         
         self.target_var = tk.BooleanVar(value=False)
         target_check = ttk.Checkbutton(target_frame, text="Add Target Point", variable=self.target_var)
-        target_check.grid(row=0, column=0, columnspan=2, pady=5)
+        target_check.grid(row=0, column=0, columnspan=2, pady=2)
         
         self.target_pos_var = tk.StringVar(value="right")
         ttk.Radiobutton(target_frame, text="Right Position (120, 60)", value="right", 
@@ -155,9 +155,17 @@ class SwarmConfigUI:
         fork_deadend_check = ttk.Checkbutton(target_frame, text="Add Fork and Dead End Markers", variable=self.fork_deadend_var)
         fork_deadend_check.grid(row=4, column=0, columnspan=2, pady=5)
         
+        # Add terrain type selection
+        self.terrain_type_var = tk.StringVar(value="cross_shape")
+        ttk.Label(target_frame, text="Terrain Type:").grid(row=5, column=0, columnspan=2, pady=2)
+        ttk.Radiobutton(target_frame, text="Y-Shape Terrain", value="y_shape", 
+                       variable=self.terrain_type_var).grid(row=6, column=0, pady=2)
+        ttk.Radiobutton(target_frame, text="Cross-Shape Terrain", value="cross_shape", 
+                       variable=self.terrain_type_var).grid(row=6, column=1, pady=2)
+        
         # Initialize and Play/Pause buttons
         btn_frame = ttk.Frame(self.main_frame)
-        btn_frame.grid(row=len(self.rank_config)+16, column=0, columnspan=2, pady=10)
+        btn_frame.grid(row=len(self.rank_config)+18, column=0, columnspan=2, pady=10)
         
         self.init_btn = ttk.Button(btn_frame, text="Initialize", command=self.initialize_simulation)
         self.init_btn.pack(side=tk.LEFT, padx=5)
@@ -195,19 +203,19 @@ class SwarmConfigUI:
     def update_widgets(self):
         # Update all widget positions after adding/removing ranks
         for i, rank in enumerate(sorted(self.rank_entries.keys())):
-            self.rank_labels[rank].grid(row=i+5, column=0, padx=5, pady=5)
-            self.rank_entries[rank].grid(row=i+5, column=1, padx=5, pady=5)
+            self.rank_labels[rank].grid(row=i+5, column=0, padx=5, pady=2)
+            self.rank_entries[rank].grid(row=i+5, column=1, padx=5, pady=2)
         
         # Update positions of all subsequent widgets
         base_row = len(self.rank_entries) + 5
         
         # Update Initialization Method section
         init_label = ttk.Label(self.main_frame, text="Initialization Method", font=('Arial', 12, 'bold'))
-        init_label.grid(row=base_row+1, column=0, columnspan=2, pady=10)
+        init_label.grid(row=base_row+1, column=0, columnspan=2, pady=5)
         
         # Update real-time update checkbox
         realtime_check = ttk.Checkbutton(self.main_frame, text="Enable Real-time Update", variable=self.realtime_update_var)
-        realtime_check.grid(row=base_row+1, column=2, padx=5, pady=5)
+        realtime_check.grid(row=base_row+1, column=2, padx=5, pady=2)
         
         # Update initialization method radio buttons
         for i, (text, value) in enumerate([
@@ -215,11 +223,11 @@ class SwarmConfigUI:
             ("Around Enrtance Placement", "grid")
         ]):
             radio = ttk.Radiobutton(self.main_frame, text=text, value=value, variable=self.init_var)
-            radio.grid(row=base_row+2+i, column=0, columnspan=2, pady=5, sticky=tk.W)
+            radio.grid(row=base_row+2+i, column=0, columnspan=2, pady=2, sticky=tk.W)
         
         # Update Environment Parameters section
         env_label = ttk.Label(self.main_frame, text="Environment Parameters", font=('Arial', 12, 'bold'))
-        env_label.grid(row=base_row+5, column=0, columnspan=2, pady=10)
+        env_label.grid(row=base_row+5, column=0, columnspan=2, pady=5)
         
         # Update environment parameter entries
         for i, (label_text, entry) in enumerate([
@@ -228,19 +236,19 @@ class SwarmConfigUI:
             ("Height:", self.height_entry)
         ]):
             label = ttk.Label(self.main_frame, text=label_text)
-            label.grid(row=base_row+6+i, column=0, padx=5, pady=5)
-            entry.grid(row=base_row+6+i, column=1, padx=5, pady=5)
+            label.grid(row=base_row+6+i, column=0, padx=5, pady=2)
+            entry.grid(row=base_row+6+i, column=1, padx=5, pady=2)
         
         # Update obstacle checkbox
         obstacle_check = ttk.Checkbutton(self.main_frame, text="Add Obstacles", variable=self.obstacle_var)
-        obstacle_check.grid(row=base_row+9, column=0, columnspan=2, pady=5)
+        obstacle_check.grid(row=base_row+9, column=0, columnspan=2, pady=2)
         
         # Update target point options frame
         target_frame = ttk.LabelFrame(self.main_frame, text="Target Point Options")
-        target_frame.grid(row=base_row+10, column=0, columnspan=2, pady=5, sticky='ew')
+        target_frame.grid(row=base_row+10, column=0, columnspan=2, pady=2, sticky='ew')
         
         target_check = ttk.Checkbutton(target_frame, text="Add Target Point", variable=self.target_var)
-        target_check.grid(row=0, column=0, columnspan=2, pady=5)
+        target_check.grid(row=0, column=0, columnspan=2, pady=2)
         
         ttk.Radiobutton(target_frame, text="Right Position (120, 60)", value="right", 
                        variable=self.target_pos_var).grid(row=1, column=0, pady=2)
@@ -249,11 +257,18 @@ class SwarmConfigUI:
         
         # Update fork and dead end marker option
         fork_deadend_check = ttk.Checkbutton(self.main_frame, text="Add Fork and Dead End Markers", variable=self.fork_deadend_var)
-        fork_deadend_check.grid(row=base_row+12, column=0, columnspan=2, pady=5)
+        fork_deadend_check.grid(row=base_row+12, column=0, columnspan=2, pady=2)
+        
+        # Update terrain type selection in target frame
+        ttk.Label(target_frame, text="Terrain Type:").grid(row=5, column=0, columnspan=2, pady=2)
+        ttk.Radiobutton(target_frame, text="Y-Shape Terrain", value="y_shape", 
+                       variable=self.terrain_type_var).grid(row=6, column=0, pady=2)
+        ttk.Radiobutton(target_frame, text="Cross-Shape Terrain", value="cross_shape", 
+                       variable=self.terrain_type_var).grid(row=6, column=1, pady=2)
         
         # Update button frame
         btn_frame = ttk.Frame(self.main_frame)
-        btn_frame.grid(row=base_row+13, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=base_row+15, column=0, columnspan=2, pady=10)
         
         self.init_btn = ttk.Button(btn_frame, text="Initialize", command=self.initialize_simulation)
         self.init_btn.pack(side=tk.LEFT, padx=5)
@@ -277,6 +292,7 @@ class SwarmConfigUI:
                 'add_fork': self.fork_var.get(),  # Always True, hidden from UI
                 'fork_position': self.fork_pos_var.get(),  # Always 'middle', hidden from UI
                 'add_fork_deadend': self.fork_deadend_var.get(),  # Add fork and dead end marker option
+                'terrain_type': self.terrain_type_var.get(),  # Add terrain type selection
                 'rank_config': {}
             }
             
